@@ -1,0 +1,294 @@
+---
+title: "Proximity and Risk of Nuclear Plants"
+author: "Grant Biellak"
+date: today
+date-format: long
+abstract: Nuclear power's share of global electricity generation has declined in recent decades despite rising global energy demand, likely driven by public fear of catastrophic accidents. This paper investigates whether that fear is reflected in where people actually live, by testing whether a nuclear plant's power generating capacity is associated with the population living within 30km of it. Using data on nuclear plant capacity and nearby population from CIESIN [@ciesin_nuclear_2015], I regress population within 30km on total 2010 plant capacity for operating plants. I find no statistically significant relationship between a plant's capacity and its nearby population, suggesting that plants that have the capacity to produce more energy do not deter people from living nearby any different than a smaller plant.
+
+format: pdf
+bibliography: references.bib
+number-sections: true
+---
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+
+```
+
+# Introduction
+Nuclear energy is the most feared energy source in the world, and for good reason. The most known accident, Chernobyl, is estimated to have caused at least 15 deaths to civilians living in the area, as well as 5,000 thyroid cancer cases in children who were exposed to milk contaminated by the radiation [@environmentalprogress_deaths]. These incidents have lead to many different changes to be made regarding nuclear power around the entire world. Even though it is one of the cleanest sources of energy, it only makes up about 9% of the energy produced around the world [@iea_nuclear_2019]. 
+
+This paper aims to answer the question: Are larger plants sited farther from population centers, or does output show no relationship to nearby population? Public perception generally treats a plant's size as a proxy for danger, but it is historically unclear whether living or siting locations has reflected this. This information in this paper could be used to aid in a study which measures radiation output within 30km of a nuclear plant
+
+In order to answer this question, I ran a regression of the amount of the energy capacity of a plant vs. the population within 30km of the plant. In this case, the total energy capacity of a plant is how the size of it is determined. A larger plant has a larger energy capacity, as well as a smaller plant having less capacity. I then used a 95% on $\beta_1$ to see if 0 was contained within the interval. I found that there is no significant relationship between the total energy capacity of a plant, and the population within 30km of it. This means that in 2010, people did not care whether or not they lived near a nuclear plant.
+
+This paper will outline the data used, the methods performed, the results of those methods, and lastly discuss the results and limitations of the study.
+
+
+
+# Data {#sec-data}
+
+The data used in this paper comes from a single source, "Population Exposure Estimates in Proximity to Nuclear Power Plants, Locations" [@ciesin_nuclear_2015], published by CIESIN at Columbia University. The datasets will be referred to as "reactors" and "populations". In reactors, each row refers to a singular nuclear reactor. Multiple nuclear reactors together create a plant, so the labeling convention for multiple reactors belonging to a single plant is "NAME-1", "NAME-2", and so on. Both of these reactors would be part of the "NAME" nuclear plant.
+
+The relevant variables in the reactors dataset are `reactor`, `plant`, and `Ref_2010`. Reactor refers to the individual reactor inside of a nuclear plant. Each reactor had its total capacity listed under `Ref_2010`. This was measured in megawatts (MW). Lastly, `plant` was the main plant that a reactor belonged to. The relevant variables in the populations dataset was again the same `plant` variable from above, as well as `p10_30` which is the population within 30km of a reactor.
+
+These two datasets were merged together on the column `plant` and as a result, `Ref_2010` needed to be aggregated into the sum of the capacity for each reactor. This lead to the new column `power2010` being formed, which is the total capacity for a nuclear plant in the year 2010. 
+
+
+```{r fig-data}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Distribution of total nuclear plant capacity in 2010"
+#| fig-width: 3.2
+#| fig-height: 2
+#| fig-pos: "H"
+library(ggplot2)
+library(patchwork)
+
+reactors <- read.csv("../data/reactors.csv")
+plants <- read.csv("../data/energy_data.csv")
+
+
+reactors$Plant <- trimws(reactors$Plant)
+plants$Plant <- trimws(plants$Plant)
+reactors$Country <- trimws(reactors$Country)
+plants$Country <- trimws(plants$Country)
+
+power <- aggregate(Ref_2010 ~ Plant + Country, data = reactors, FUN = sum)
+names(power)[3] <- "power2010"
+
+data <- merge(plants, power, by = c("Plant", "Country"))
+
+ggplot(data, aes(x = power2010)) +
+  geom_histogram(binwidth = 500, fill = "steelblue", color = "white") +
+  theme_minimal() +
+  labs(x = "Total plant capacity in 2010 (MW)", y = "Count")
+
+```
+
+As clear in @fig-data a majority of the data for the variable `power2010` sits in the 0 bucket. This is a result of many plants being out of commission and therefore having 0 total capacity for the year 2010. For the analysis, I decided to remove these 0's because this study focuses only on operational plants. The total amount of points after dropping the 0's is 187.
+
+```{r fig-p10-30}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Distribution of populations within 30km of active nuclear plants in 2010"
+#| fig-width: 3.5
+#| fig-height: 2.5
+#| fig-pos: "H"
+
+ggplot(data, aes(x = p10_30)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal() +
+  labs(x = "Population within 30km", y = "Count")
+
+```
+
+
+Similar to `power2010`, the variable `p10_30` has a strong right skew. This is not surprising, as it lines up with the idea that large populations do not live near nuclear plants. A log transformation was applied to this variable for our second test, which will be further explained.
+
+```{r fig-log-p10-30}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Distribution of the log of populations within 30km of active nuclear plants in 2010"
+#| fig-width: 3.5
+#| fig-height: 2.5
+#| fig-pos: "H"
+
+ggplot(data, aes(x = log(p10_30))) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  theme_minimal() +
+  labs(x = "Log population within 30km", y = "Count")
+
+```
+
+
+# Methods {#sec-methods}
+
+In order to test the main question of this paper, I regressed the population within 30km of a nuclear plant on the total capacity of an entire plant. The goal of this regression was to find out if the slope parameter $\beta_1$, showed a significant relationship. The assumptions I must make to run all tests are the residuals are normally distributed, the variance is uniform, and the errors are independent. These assumptions must be made in order to perform a hypothesis test or computing a confidence interval because they allow us to accurately estimate the distribution of $\beta_1$. 
+$$
+Y_i = \beta_0 + \beta_1 X_i + \varepsilon_i
+$$
+
+where
+
+- $Y_i$ = population within 30km of plant $i$
+- $X_i$ = total capacity of plant $i$
+- $\beta_0$ = intercept
+- $\beta_1$ = parameter of interest
+- $\varepsilon_i$ = random error term for plant $i$
+
+
+The first method to find if $\beta_1$ shows a significant relationship was a hypothesis test. To do so, I used the following hypotheses:
+
+$$
+H_o: \beta_1 = 0 \quad \text{versus} \quad H_a: \beta_1 \neq 0
+$$
+
+We can find our test statistic using the formula
+$$
+T = \frac{b_1 - 0}{\text{SE}(b_1)} \sim t_{n-2} \quad \text{under } H_0
+$$
+
+The second method I performed was a 95% confidence interval on $\beta_1$ to see if 0 is included in that interval. In the case that 0 is not included, a confidence interval can help me determine if this is a positive or negative relationship. 
+
+$$
+b_1 \pm t^*_{n-2,\, \alpha/2} \cdot \text{SE}(b_1)
+$$
+
+The programming language `R` [@R_language] was used to compute values for all tests. The commands used inside of `R` were `lm()` and `confint()` for the first two methods respectively. 
+
+## Log-transformed Model
+
+The same methods performed above were performed again on a model with a log transformation applied to the `p10_30` variable. As clear in @fig-p10-30, the distribution of population has a hard right skew with some significant visual outliers which have much higher populations than most entries. The goal of applying a log transformation is to move the outliers to be more in line with the general data. The log transformed regression goes as follows with all variables defined above.
+
+$$
+\log{(Y_i)} = \beta_0 + \beta_1 X_i + \varepsilon_i
+$$
+
+
+# Results {#sec-results}
+
+
+To start, let's visualize what exactly we are performing the regression on.
+```{r fig-scatter-raw}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Scatterplot of total plant capacity and population within 30km."
+#| fig-width: 5
+#| fig-height: 3.5
+#| fig-pos: "H"
+
+a <- data[data$power2010 > 0, ]
+
+ggplot(a, aes(x = power2010, y = p10_30)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "Total plant capacity in 2010 (MW)", y = "Population within 30km")
+
+```
+
+This figure shows us that most points lie around the same spot on the Y axis, while they are quite spread out on the X axis. This reflects what was shown earlier in @fig-data and @fig-p10-30, where both variables had a right skew, with the population (Y) having an even stronger one. This graph reveals that we will likely have some issues with outliers in our regression, as well as potentially having normality issues.
+
+```{r model-fit}
+#| echo: false
+#| warning: false
+#| message: false
+
+model <- lm(p10_30 ~ power2010, data = a)
+
+slopeInterval <- confint(model, level = 0.95)
+
+p_val <- summary(model)$coefficients["power2010", "Pr(>|t|)"]
+
+z <- list(p_value = p_val, slope_interval = slopeInterval["power2010", ] )
+
+```
+
+The estimated slope is $b_1$ =  `r round(coefficients(model)["power2010"], 4)` and the estimated intercept is $b_0$ = `r round(coefficients(model)["(Intercept)"], 2)` from running the regression model. For $b_1$ this means that for every 1 more capacity of power in megawatts, population within 30km decreases by an average of `r -1*round(coefficients(model)["power2010"], 4)`. To find out if this slope value is significant, we can perform the hypothesis test stated above. From that test we get a p-value of `r round(z$p_value, 2)` which is not significant at $\alpha$ = 0.05. This means that we fail to reject the null hypothesis and there is not significant reason to believe $b_1 \neq 0$. The confidence interval that was computed is (`r round(z$slope_interval, 2)`) which contains the value 0. This again points to the fact that there is no significant relationship between total capacity of a nuclear plant and the population living within 30km of it.
+
+While the tests show that there is no relationship, we must ask the question if the tests were even valid to perform. As stated above we must meet a few assumptions such as normally distributed residuals. From @fig-residual-raw it is evident that these assumptions cannot be met and therefore this test was not valid. When plotting the fitted values, it is clear that as the fitted value increases, the variance also increases. The variance also has no large negative residuals while having many large positive ones suggesting that variance is not uniform. As for the assumption of normal residuals, we can make a qqplot of the residuals to see if it lines up with the quantiles of the normal distribution. The tails of the plot clearly do not follow the normal quantiles therefore the residuals are not normally distributed. In summary, our assumptions are not met and the previous methods to test if the slope is significant are not valid.
+
+```{r fig-residual-raw}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Residuals vs. fitted values and normal QQ plot of residuals for the raw model."
+#| fig-width: 8
+#| fig-height: 3.5
+#| fig-pos: "H"
+resid_df <- data.frame(fitted = fitted(model), resid = resid(model))
+
+p1 <- ggplot(resid_df, aes(x = fitted, y = resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(x = "Fitted value", y = "Residual")
+
+p2 <- ggplot(resid_df, aes(sample = resid)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  theme_minimal() +
+  labs(x = "Theoretical quantiles", y = "Sample quantiles")
+
+p1 + p2
+```
+
+{{< pagebreak >}}
+
+## Log Model
+
+In @fig-log-p10-30, I found that applying a log transformation to the population within 30km (our outcome) has a rough normal distribution. As a result, I will now test if the conditions needed for inference on $b_1$ can be met with this new data.
+```{r fig-scatter-log}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Scatterplot of total plant capacity and log population within 30km."
+#| fig-width: 5
+#| fig-height: 3.5
+#| fig-pos: "H"
+b <- a
+b$log_pop30 <- log(b$p10_30)
+
+ggplot(b, aes(x = power2010, y = log_pop30)) +
+  geom_point() +
+  theme_minimal() +
+  labs(x = "Total plant capacity in 2010 (MW)", y = "Log population within 30km")
+
+model <- lm(log_pop30 ~ power2010, data = b)
+```
+
+
+
+```{r model-fit-log}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: ""
+slopeInterval <- confint(model, level = 0.95)
+p_val <- summary(model)$coefficients["power2010", "Pr(>|t|)"]
+z <- list(p_value = p_val, slope_interval = slopeInterval["power2010", ] )
+```
+
+The estimated slope is $b_1$ =  `r round(coefficients(model)["power2010"], 4)` and the estimated intercept is `r round(coefficients(model)["(Intercept)"], 2)`. This means that for every 1 more megawatt of capacity in a nuclear plant, there is no percent change in population. Using the same hypothesis test and confidence interval as the previous section gives a p-value of `r round(z$p_value, 2)` and a confidence interval of (`r round(z$slope_interval, 4)`). The interpretation of these values is the same as for the non log transformed model; fail to reject the null hypothesis, and understand that 0 is inside the interval. These both point to the fact that there is no significant relationship between total capacity of a nuclear plant and the population living within 30km of it.
+
+While the results stay the same, the assumptions still need to be checked to see if these were valid methods to perform on this data. From @fig-residual-log, equal variance seems likely as the values are spread out evenly on both sides of the residual line. The residuals mapped to the normal qq plot also reveals that they are roughly distributed as normal. Since both of these assumptions are met, the tests performed under a log transformation are valid and I can conclude that there is no relationship between total capacity of a nuclear plant and the population living within 30km of it. This in turn means that fear is not reflected where people live when it comes to living near nuclear plants.
+
+
+```{r fig-residual-log}
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Residuals vs. fitted values and normal QQ plot of residuals for the log-transformed model."
+#| fig-width: 8
+#| fig-height: 3.5
+#| fig-pos: "H"
+resid_df_log <- data.frame(fitted = fitted(model), resid = resid(model))
+
+p3 <- ggplot(resid_df_log, aes(x = fitted, y = resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(x = "Fitted value", y = "Residual")
+
+p4 <- ggplot(resid_df_log, aes(sample = resid)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  theme_minimal() +
+  labs(x = "Theoretical quantiles", y = "Sample quantiles")
+
+p3 + p4
+```
+
+
+# Discussion {#sec-discussion}
+
+In summary, this paper set out to answer the question: given the safety concerns nuclear accidents have raised, are larger plants sited farther from population centers, or does output show no relationship to nearby population? The answer is that the size of a plant has no relationship with the population within 30km of it. One srength of this study is that the log model correctly meets assumptions and as a result, the conclusion reached using regression is a valid one. The biggest weakness of this study is that for every data point, it is assumed that the population moved in after the nuclear plant was built. To improve this study, year by year population data, and the year of nuclear plant construction would need to be used. This would allow us to understand if the population truly did move in after construction of a plant. While difficult or even impossible, it would be nice to have radiation data of these plants and test that against population as an addition to this study.
+
+
+# References
