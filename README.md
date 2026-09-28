@@ -23,7 +23,7 @@ Data was obtained from Harvard Dataverse: https://dataverse.harvard.edu/file.xht
 **Citation:**
 Center for International Earth Science Information Network - CIESIN - Columbia University, 2015, "Population Exposure Estimates in Proximity to Nuclear Power Plants, Locations", https://doi.org/10.7910/DVN/AG3JE3, Harvard Dataverse, V1; energy-pop-exposure-nuclear-plants-locations.zip [fileName]
 
-**License:** [CC BY 4.0](http://creativecommons.org/licenses/by/4.0) (Creative Commons Attribution 4.0 International)
+**License:** [CC BY 4.0](http:/ /creativecommons.org/licenses/by/4.0) (Creative Commons Attribution 4.0 International)
 
 ## Use of External Resources
 
